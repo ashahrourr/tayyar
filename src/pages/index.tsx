@@ -1,8 +1,26 @@
+// pages/index.tsx
 import { ArrowUpIcon } from '@heroicons/react/24/solid'
 import { useRouter } from 'next/router'
 import { useState, useRef, useEffect, JSX } from 'react'
-import { supabase } from '@/lib/supabaseClient'
-import { EllipsisHorizontalIcon } from '@heroicons/react/24/solid'
+import { supabase } from '@/SupaBase/supabaseClient'
+import { mockPages } from '@/lib/mockComponents';
+import { RenderComponent } from '@/CanvasRender/renderComponent'
+import { UIComponent } from '@/lib/types'
+import { flattenComponents } from '@/utils/flattenComponents'
+import { updateComponentTree } from '@/utils/updateComponentTree'
+import { LayerItem } from '@/LeftSideBar/LayerItem'
+import { buildComponentTree } from '@/utils/buildComponentTree'
+import {
+  getCurrentTextSize,
+  shiftTextSize,
+  getCurrentPadding,
+  setPadding,
+  getCurrentColor,
+  setColor,
+  setInlineColor,
+} from '@/RightSideBar/tailwindHelpers'
+import { RenderPreview } from '@/CanvasRender/renderPreview';
+
 
 interface Message {
   id: string
@@ -25,19 +43,58 @@ export default function Home() {
   const [promptDrafts, setPromptDrafts] = useState<Record<string, string>>({})
   const prompt = promptDrafts[projectId ?? ''] ?? ''
   const [output, setOutput] = useState<JSX.Element | null>(null)
-  const [leftWidth, setLeftWidth] = useState(480)
+  const [leftWidth, setLeftWidth] = useState(230)
+  const [rightWidth, setRightWidth] = useState(230)
   const isDragging = useRef(false)
   const leftPanelRef = useRef<HTMLDivElement | null>(null)
+  const rightPanelRef = useRef<HTMLDivElement | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [projects, setProjects] = useState<Project[]>([])
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
-  const [selectedTab, setSelectedTab] = useState<'preview' | 'workspace'>('preview')
+  const [selectedTab, setSelectedTab] = useState<'edit' | 'workspace'>('edit')
   const [dropdownOpenId, setDropdownOpenId] = useState<string | null>(null)
   const [renameProjectId, setRenameProjectId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState<string>('')
   const promptRef = useRef<HTMLTextAreaElement | null>(null)
   const [creatingNewProject, setCreatingNewProject] = useState(false)
   const [highlightedProjectId, setHighlightedProjectId] = useState<string | null>(null)
+  const [workspaceCode, setWorkspaceCode] = useState<string>('')
+  const [pages, setPages] = useState<typeof mockPages>([])
+  const [currentPageId, setCurrentPageId] = useState('page-1')
+  const currentPage = pages.find(p => p.id === currentPageId)
+  const components = currentPage?.components ?? []
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const canvasRef = useRef<HTMLDivElement>(null)
+  const [focused, setFocused] = useState(false)
+  const layerTree = buildComponentTree(components)
+  const selectedComponent = components.find(c => c.id === selectedId)
+  const TEXT_EDITABLE = ['Text', 'Button', 'Input'];
+  const PADDING_EDITABLE = ['Container', 'Card', 'Button', 'Input', 'Form'];
+  const TEXT_COLOR_EDITABLE = ['Text', 'Button', 'Input'];
+  const BG_COLOR_EDITABLE = ['Container', 'Card', 'Button', 'Input', 'Form'];
+  // state (put near the top after other useState calls)
+const [mode, setMode]           = useState<'edit'|'preview'>('edit')
+
+
+// near other derivations
+const flattened = flattenComponents(components)
+const pageHeight = Math.max(
+  756,
+  flattened.reduce((m, c) => {
+    const y = typeof c.y === 'number' ? c.y : 0
+    const h =
+      typeof c.h === 'number'
+        ? c.h
+        : parseInt(String(c.h || 0), 10) || 0
+    return Math.max(m, y + h)
+  }, 0) + 24 // a little bottom padding
+)
+
+
+
+
+
+
+
 
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -54,8 +111,8 @@ export default function Home() {
     if (!container) return
 
     const newWidth = e.clientX - container.left
-    const minWidth = 320
-    const maxWidth = Math.min(800, container.width - 200) // Ensure right panel has at least 200px
+    const minWidth = 200
+    const maxWidth = Math.min(400, container.width - 200)
     setLeftWidth(Math.max(minWidth, Math.min(newWidth, maxWidth)))
   }
 
@@ -92,13 +149,22 @@ export default function Home() {
   }, [])
 
   useEffect(() => {
+    if (!projectId) {
+      setPages(mockPages)
+    }
+  }, [projectId])
+  
+
+
+
+
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement
       if (!target.closest('.project-dropdown')) {
         setDropdownOpenId(null)
         setHighlightedProjectId(null)
       }
-
     }
 
     window.addEventListener('click', handleClickOutside)
@@ -168,6 +234,14 @@ export default function Home() {
     }
   }, [creatingNewProject])
 
+  useEffect(() => {
+    if (canvasRef.current) {
+      const width = canvasRef.current.offsetWidth
+      const height = canvasRef.current.offsetHeight
+      console.log('Canvas size:', width, 'x', height)
+    }
+  }, [])
+
   const handleDeleteProject = async (id: string) => {
     const { error } = await supabase.from('projects').delete().eq('id', id)
 
@@ -199,8 +273,9 @@ export default function Home() {
       ...prev,
       [projectId ?? '']: '',
     }))
-
     promptRef.current?.focus()
+
+    let currentProjectId = projectId
 
     if (projectId) {
       await supabase.from('messages').insert({
@@ -210,7 +285,7 @@ export default function Home() {
       })
     } else {
       const title = "New project"
-      const res = await fetch('/api/projects/create', {
+      const res = await fetch('/api/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, name: title }),
@@ -218,10 +293,10 @@ export default function Home() {
 
       const data = await res.json()
       if (res.ok) {
-        const newProjectId = data.id
+        currentProjectId = data.id
         setProjects(prev => [
           {
-            id: newProjectId,
+            id: data.id,
             name: title,
             prompt,
             created_at: new Date().toISOString(),
@@ -230,192 +305,144 @@ export default function Home() {
         ])
 
         await supabase.from('messages').insert({
-          project_id: newProjectId,
+          project_id: data.id,
           role: 'user',
           content: prompt,
         })
 
-        await router.push(`/?project_id=${newProjectId}`)
+        await router.push(`/?project_id=${data.id}`)
       } else {
         alert('Failed to create project.')
+        return
       }
     }
   }
 
+  function handleUpdate(id: string, updates: Partial<UIComponent>) {
+    setPages(prev =>
+      prev.map(p =>
+        p.id === currentPageId
+          ? { ...p, components: updateComponentTree(p.components, id, updates) }
+          : p
+      )
+    )
+  }
+  
+  
+
   return (
-    <div className="flex min-h-screen bg-[#262624]">
-      <div
-        className={`${isSidebarCollapsed ? 'w-15' : 'w-60'} h-screen bg-[#1f1e1d] text-black flex flex-col justify-between border-r transition-all duration-300 relative`}
-        style={{ borderColor: '#4a4a47' }}
-      >
-        {isSidebarCollapsed && (
-          <div
-            className="absolute top-0 right-0 w-2 h-full cursor-e-resize z-50"
-            onClick={() => setIsSidebarCollapsed(false)}
-          />
-        )}
-        <div className={`${isSidebarCollapsed ? 'pl-1' : 'pl-3'} pr-1 pt-2 pb-2 flex-1`}>
-          <div className="flex items-center justify-between mb-6" style={{ paddingLeft: isSidebarCollapsed ? '9px' : '1px' }}>
-            <div className="flex items-center">
-              <div className="text-white text-lg font-bold rounded-md w-0 h-10 flex items-center justify-center pl-3">
-                T
-              </div>
-              <span
-                className={`ml-1 transition-all duration-300 ease-in-out whitespace-nowrap ${isSidebarCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'
-                  }`}
-              >
-                <span className="text-xl font-bold text-white">ayyar</span>
-              </span>
-            </div>
-            <button
-              onClick={() => setIsSidebarCollapsed(true)}
-              className={`text-white w-10 h-10 flex items-center justify-center transition text-2xl leading-none ${isSidebarCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'
-                }`}
-            >
-              «
-            </button>
-          </div>
-          <div className="mb-15 relative h-1" style={{ paddingLeft: isSidebarCollapsed ? '9px' : '1px' }}>
-            <button
-              onClick={() => {
-                setCreatingNewProject(true)
-                router.push('/')
-              }}
-              className="flex items-center h-full text-[#d97757] font-semibold relative"
-            >
-              <span className="text-2xl w-6 h-full flex items-center justify-center">+</span>
-              <span
-                className={`ml-1 transition-all duration-300 ease-in-out whitespace-nowrap ${isSidebarCollapsed ? 'opacity-0 w-0 overflow-hidden' : 'opacity-100 w-auto'
-                  }`}
-              >
-                New Project
-              </span>
-            </button>
-          </div>
-
-
-          {!isSidebarCollapsed && (
-            <>
-              <h3 className="text-sm font-semibold text-[#aaa89f] mb-2">Projects</h3>
-              <div className="space-y-0">
-                {projects.map((project) => {
-                  const isActive = project.id === projectId
-                  const isTemporarilyHighlighted = highlightedProjectId === project.id && !isActive
-
-                  return (
-                    <div
-                      key={project.id}
-                      className={`relative group flex items-center justify-between px-3 py-1 rounded-lg transition project-dropdown
-        ${(isActive || isTemporarilyHighlighted) ? 'bg-[#2f2f2f]' : 'hover:bg-[#2f2f2f]'}`}
-                    >
-
-
-                      {renameProjectId === project.id ? (
-                        <input
-                          autoFocus
-                          value={renameValue}
-                          onChange={(e) => setRenameValue(e.target.value)}
-                          onKeyDown={async (e) => {
-                            if (e.key === 'Enter' && renameValue.trim()) {
-                              const { error } = await supabase
-                                .from('projects')
-                                .update({ name: renameValue.trim() })
-                                .eq('id', project.id)
-                              if (!error) {
-                                setProjects(prev =>
-                                  prev.map(p =>
-                                    p.id === project.id ? { ...p, name: renameValue.trim() } : p
-                                  )
-                                )
-                              }
-                              setRenameProjectId(null)
-                            } else if (e.key === 'Escape') {
-                              setRenameProjectId(null)
-                            }
-                          }}
-                          className="text text-[#aaa89f] flex-1 bg-transparent border-none focus:outline-none px-0 py-0"
-                        />
-
-                      ) : (
-                        <button
-                          onClick={() => router.push(`/?project_id=${project.id}`)}
-                          className={`text-left flex-1 truncate ${isActive ? 'text-[#aaa89f]' : 'text-[#aaa89f]'}`}
-                        >
-                          {project.name || 'Untitled'}
-                        </button>
-                      )}
-                      <div className="relative">
-                        <button
-                          onClick={() => {
-                            const newId = dropdownOpenId === project.id ? null : project.id
-                            setDropdownOpenId(newId)
-                            setHighlightedProjectId(newId)
-                          }}
-
-                          className={`ml-2 p-1 rounded transition ${dropdownOpenId === project.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-
-                        >
-                          <EllipsisHorizontalIcon className="h-5 w-5 text-[#94928b]" />
-                        </button>
-                        {dropdownOpenId === project.id && (
-                          <div
-                            className="absolute right-0 translate-x-[80px] mt-1 w-25 bg-[#30302e] border rounded-lg shadow-lg z-50 p-1"
-                            style={{ borderColor: '#4a4a47' }}
-                          >
-                            <button
-                              onClick={() => {
-                                setRenameProjectId(project.id)
-                                setRenameValue(project.name || '')
-                                setDropdownOpenId(null)
-                              }}
-                              className="block w-full px-3 py-2 text-left text-sm text-[#94928b] hover:bg-[#555555] rounded-lg transition"
-                            >
-                              Rename
-                            </button>
-                            <button
-                              onClick={() => handleDeleteProject(project.id)}
-                              className="block w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-[#555555] rounded-lg transition"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        )}
-
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </>
-          )}
+    <div className="flex flex-col min-h-screen bg-[#262624]">
+      {/* Header */}
+      <header className="h-14 bg-[#1f1e1d] border-b flex items-center justify-between px-4 sticky top-0 z-50" style={{ borderColor: '#4a4a47' }}>
+        <div className="flex items-center">
+          <span className="text-xl font-bold text-white">Tayyar</span>
         </div>
-      </div>
-      <div className="flex-1 flex flex-col">
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex items-center space-x-4">
+  <button
+    onClick={() => setMode('edit')}
+    className={mode==='edit' ? 'text-white font-semibold' : 'text-[#aaa89f] hover:text-white'}
+  >
+    Edit
+  </button>
+  <button
+    onClick={() => setMode('preview')}
+    className={mode==='preview' ? 'text-white font-semibold' : 'text-[#aaa89f] hover:text-white'}
+  >
+    Preview
+  </button>
+
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <div className="flex flex-1 h-[calc(100vh-3.5rem)]">
+        {/* Left Sidebar (Projects) */}
+        <div
+          ref={leftPanelRef}
+          className="min-h-screen min-w-[230px] bg-[#1f1e1d] border-r relative"
+          style={{ borderColor: '#4a4a47', width: `${leftWidth}px` }}
+        >
+
+          {/* Placeholder content to ensure rendering */}
           <div
             ref={leftPanelRef}
-            style={{ width: leftWidth }}
-            className="h-[calc(100vh)] flex flex-col bg-[#262624] pl-2 pr-2 pt-16 pb-1"
+            className="min-h-screen min-w-[230px] bg-[#1f1e1d] border-r relative"
+            style={{ borderColor: '#4a4a47', width: `${leftWidth}px` }}
           >
-            <div className="flex-1 overflow-y-auto space-y-4">
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  className={`px-4 py-2 text-sm rounded-xl text-[#94928b] bg-[#181817] break-words w-fit max-w-[calc(100%-4rem)] ${msg.role === 'user' ? 'ml-auto text-left' : 'mr-auto text-left'}`}
-                >
-                  {msg.content.split('\n').map((line, idx) => (
-                    <span key={idx}>
-                      {line}
-                      <br />
-                    </span>
-                  ))}
-                </div>
+
+            <div className="p-4 text-[#aaa89f] overflow-y-auto h-full max-h-[calc(100vh-3.5rem)]">
+            <div className="mb-4 space-y-1">
+  <h2 className="text-white font-bold text-sm">Pages</h2>
+  {pages.map(p => (
+    <button
+      key={p.id}
+      onClick={() => {
+        setCurrentPageId(p.id)
+        setSelectedId(null)
+      }}
+      className={`block w-full text-left px-2 py-1 rounded ${
+        p.id === currentPageId
+          ? 'bg-[#444] text-white'
+          : 'text-[#aaa89f] hover:bg-[#333]'
+      }`}
+    >
+      {p.name}
+    </button>
+  ))}
+</div>
+
+              <h2 className="text-white font-bold text-sm mb-2">Layers</h2>
+
+              {layerTree.map(root => (
+                <LayerItem
+                  key={root.id}
+                  comp={root}
+                  selectedId={selectedId}
+                  setSelectedId={setSelectedId}
+                  depth={0}
+                />
               ))}
             </div>
+          </div>
+
+
+        </div>
+
+{/* Canvas viewport */}
+<div className="w-full h-[756px] bg-[#30302e] relative" style={{ borderColor: '#4a4a47' }}>
+  {/* scroll container */}
+  <div className="w-full h-full overflow-y-auto overflow-x-hidden">
+    {/* content wrapper (true page height) */}
+    <div
+      ref={canvasRef}                      // <— important: ref on the CONTENT, not the viewport
+      className="relative w-full"
+      style={{ height: pageHeight }}
+      onClick={() => setSelectedId(null)}
+    >
+      {mode === 'edit' ? (
+        flattenComponents(components).map(comp => (
+          <RenderComponent
+            key={comp.id}
+            comp={comp}
+            mode="edit"
+            selectedId={selectedId}
+            setSelectedId={setSelectedId}
+            updateComponent={handleUpdate}
+            canvasRef={canvasRef}        // <— now points to full-height content
+          />
+        ))
+      ) : (
+        <RenderPreview components={components} navigate={setCurrentPageId} />
+      )}
+    </div>
+
+            {/* Prompt Box */}
             <form
               onSubmit={handleSubmit}
-              className="mt-4 w-full px-1 rounded-lg bg-[#30302e] border py-3 hover:shadow-xl transition"
-              style={{ borderColor: '#4a4a47' }}
+              className={`absolute bottom-4 left-0 right-0 mx-4 rounded-lg border py-3 shadow-lg transition-all duration-300 ${focused
+                ? 'bg-[#30302e] border-[#d97757]'
+                : 'bg-[#30302e]/70 border-[#4a4a47]'
+                }`}
             >
               <textarea
                 ref={promptRef}
@@ -428,6 +455,8 @@ export default function Home() {
                     [projectId ?? '']: val,
                   }))
                 }}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault()
@@ -435,7 +464,7 @@ export default function Home() {
                   }
                 }}
                 placeholder="Message Tayyar"
-                className="w-full bg-transparent text-[#aaa89f] text-sm placeholder-[#aaa89f] resize-none focus:outline-none py-0 px-4"
+                className="w-full bg-transparent text-[#ccc] text-sm placeholder-[#aaa89f] resize-none focus:outline-none py-0 px-4"
               />
               <div className="flex justify-end mt-4 pr-4">
                 <button
@@ -447,51 +476,206 @@ export default function Home() {
                 </button>
               </div>
             </form>
-          </div>
-          <div className="flex-1 overflow-hidden pr-2 flex flex-col">
-            <div className="flex space-x-1 px-4 pt-2 pb-1">
-              <button
-                onClick={() => setSelectedTab('workspace')}
-                className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${selectedTab === 'workspace'
-                  ? 'bg-[#1f1e1d] text-[#aaa89f]'
-                  : 'text-[#aaa89f] hover:bg-[#1f1e1d]'
-                  }`}
-              >
-                Workspace
-              </button>
-              <button
-                onClick={() => setSelectedTab('preview')}
-                className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${selectedTab === 'preview'
-                  ? 'bg-[#1f1e1d] text-[#aaa89f]'
-                  : 'text-[#aaa89f] hover:bg-[#1f1e1d]'
-                  }`}
-              >
-                Preview
-              </button>
-            </div>
-            <div className="flex items-center justify-center w-full h-[calc(100vh-40px)] relative py-1 pb-3">
-              <div
-                onMouseDown={handleMouseDown}
-                className="absolute -left-px top-3 h-[95%] w-[2px] bg-[#4a4a47] cursor-col-resize z-10 rounded-t-full rounded-b-full"
-              />
-              <div className="w-full h-full rounded-lg bg-white border overflow-hidden max-w-[100%]" style={{ borderColor: '#4a4a47' }}>
-                <div className="w-full h-full bg-[#30302e] overflow-auto p-6">
-                  {selectedTab === 'preview' ? (
-                    output || (
-                      messages.length > 0 && (
-                        <p className="text-[#aaa89f] text-sm">
-                          Prompt: {messages[messages.length - 1].content}
-                        </p>
-                      )
-                    )
-                  ) : (
-                    <div className="text-[#aaa89f] text-sm italic">Workspace content goes here…</div>
-                  )}
-                </div>
-              </div>
-            </div>
+
           </div>
         </div>
+
+        {/* Right Sidebar (Messages + Tabs) */}
+        <div
+          ref={rightPanelRef}
+          className="min-h-screen min-w-[230px] bg-[#1f1e1d] border-l relative"
+          style={{ borderColor: '#4a4a47', width: `${rightWidth}px` }}
+        >
+          <div className="p-4 text-[#aaa89f]">
+            <h2 className="text-white font-bold text-sm mb-2">Properties</h2>
+
+            {selectedComponent ? (
+              <div className="space-y-3 text-sm">
+                {/* ----- Type (read-only) ----- */}
+                <div>
+                  <label className="block text-[#aaa89f] mb-1">Type</label>
+                  <div className="bg-[#2b2b2a] p-2 rounded">{selectedComponent.type}</div>
+                </div>
+
+                {/* ----- Position & Size ----- */}
+                {['x', 'y', 'w', 'h'].map((field) => (
+                  <div key={field}>
+                    <label className="block text-[#aaa89f] mb-1">{field.toUpperCase()}</label>
+                    <input
+                      type="number"
+                      className="w-full bg-[#2b2b2a] text-white p-2 rounded outline-none"
+                      value={selectedComponent[field as 'x' | 'y' | 'w' | 'h'] ?? ''}
+                      onChange={(e) =>
+                        handleUpdate(selectedComponent.id, {
+                          [field]: parseInt(e.target.value, 10) || 0,
+                        })
+                      }
+                    />
+                  </div>
+                ))}
+
+                {/* ----- Text size (only for text-based comps) ----- */}
+                {TEXT_EDITABLE.includes(selectedComponent.type) && (
+                  <div>
+                    <label className="block text-[#aaa89f] mb-1">Text size</label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="bg-[#2b2b2a] px-3 py-1 rounded"
+                        onClick={() =>
+                          handleUpdate(selectedComponent.id, {
+                            props: {
+                              ...selectedComponent.props,
+                              className: shiftTextSize(selectedComponent.props.className, -1),
+                            },
+                          })
+                        }
+                      >
+                        −
+                      </button>
+                      <span className="flex-1 text-center bg-[#2b2b2a] py-1 rounded">
+                        {getCurrentTextSize(selectedComponent.props.className)}
+                      </span>
+                      <button
+                        className="bg-[#2b2b2a] px-3 py-1 rounded"
+                        onClick={() =>
+                          handleUpdate(selectedComponent.id, {
+                            props: {
+                              ...selectedComponent.props,
+                              className: shiftTextSize(selectedComponent.props.className, +1),
+                            },
+                          })
+                        }
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ----- Padding (only for layout comps) ----- */}
+                {PADDING_EDITABLE.includes(selectedComponent.type) && (
+                  <div>
+                    <label className="block text-[#aaa89f] mb-1">Padding</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min={0}
+                        max={12}
+                        value={getCurrentPadding(selectedComponent.props.className)}
+                        onChange={(e) =>
+                          handleUpdate(selectedComponent.id, {
+                            props: {
+                              ...selectedComponent.props,
+                              className: setPadding(
+                                selectedComponent.props.className,
+                                Number(e.target.value)
+                              ),
+                            },
+                          })
+                        }
+                        className="flex-1"
+                      />
+                      <span className="w-8 text-center">
+                        {getCurrentPadding(selectedComponent.props.className)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* ---- Text colour ---- */}
+                {TEXT_COLOR_EDITABLE.includes(selectedComponent.type) && (
+                  <div>
+                    <label className="block text-[#aaa89f] mb-1">Text colour</label>
+                    <input
+                      type="color"
+                      value={getCurrentColor(
+                        selectedComponent.props.className,
+                        'text',
+                        selectedComponent.props.style
+                      )}
+
+                      onChange={(e) =>
+                        handleUpdate(selectedComponent.id, {
+                          props: {
+                            ...selectedComponent.props,
+                            // Remove any text colour classes so Tailwind doesn't override us
+                            className: setColor(selectedComponent.props.className, 'text', ''),
+                            style: setInlineColor(
+                              selectedComponent.props.style,
+                              'text',
+                              e.target.value
+                            ),
+                          },
+                        })
+                      }
+                      className="w-full h-10 p-0 border-0 bg-transparent"
+                    />
+                  </div>
+                )}
+
+                {/* ---- Background colour ---- */}
+                {BG_COLOR_EDITABLE.includes(selectedComponent.type) && (
+                  <div>
+                    <label className="block text-[#aaa89f] mb-1">Background</label>
+                    <input
+                      type="color"
+                      value={getCurrentColor(
+                        selectedComponent.props.className,
+                        'bg',
+                        selectedComponent.props.style
+                      )}
+
+                      onChange={(e) =>
+                        handleUpdate(selectedComponent.id, {
+                          props: {
+                            ...selectedComponent.props,
+                            className: setColor(selectedComponent.props.className, 'bg', ''),
+                            style: setInlineColor(
+                              selectedComponent.props.style,
+                              'bg',
+                              e.target.value
+                            ),
+                          },
+                        })
+                      }
+                      className="w-full h-10 p-0 border-0 bg-transparent"
+                    />
+                  </div>
+                )}
+
+
+
+                {/* ----- Fallback: raw prop editor (advanced) ----- */}
+                <details className="mt-4">
+                  <summary className="cursor-pointer select-none text-[#aaa89f]">
+                    Advanced props
+                  </summary>
+                  {Object.entries(selectedComponent.props).map(([key, value]) => (
+                    <div className="mt-2" key={key}>
+                      <label className="block text-[#aaa89f] mb-1">{key}</label>
+                      <input
+                        className="w-full bg-[#2b2b2a] text-white p-2 rounded outline-none"
+                        value={String(value)}
+                        onChange={(e) =>
+                          handleUpdate(selectedComponent.id, {
+                            props: {
+                              ...selectedComponent.props,
+                              [key]: e.target.value,
+                            },
+                          })
+                        }
+                      />
+                    </div>
+                  ))}
+                </details>
+              </div>
+
+            ) : (
+              <p className="text-[#777] text-sm">Select a component to edit</p>
+            )}
+          </div>
+        </div>
+
       </div>
     </div>
   )
