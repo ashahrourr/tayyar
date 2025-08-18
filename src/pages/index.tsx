@@ -4,7 +4,6 @@ import { useRouter } from 'next/router'
 import { useState, useRef, useEffect, JSX } from 'react'
 import { supabase } from '@/SupaBase/supabaseClient'
 import { mockPages } from '@/lib/mockComponents';
-import { RenderComponent } from '@/CanvasRender/renderComponent'
 import { UIComponent } from '@/lib/types'
 import { flattenComponents } from '@/utils/flattenComponents'
 import { updateComponentTree } from '@/utils/updateComponentTree'
@@ -19,7 +18,10 @@ import {
   setColor,
   setInlineColor,
 } from '@/RightSideBar/tailwindHelpers'
-import { RenderPreview } from '@/CanvasRender/renderPreview';
+import { Canvas } from '@/CanvasRender/Canvas';
+import { Element } from '@/CanvasRender/Element';
+
+
 
 
 interface Message {
@@ -124,14 +126,6 @@ const pageHeight = Math.max(
     }
   }
 
-  useEffect(() => {
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mouseup', handleMouseUp)
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
-    }
-  }, [])
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -412,29 +406,25 @@ const pageHeight = Math.max(
 <div className="w-full h-[756px] bg-[#30302e] relative" style={{ borderColor: '#4a4a47' }}>
   {/* scroll container */}
   <div className="w-full h-full overflow-y-auto overflow-x-hidden">
-    {/* content wrapper (true page height) */}
+    {/* content wrapper (dynamic full page height handled inside each canvas) */}
     <div
-      ref={canvasRef}                      // <— important: ref on the CONTENT, not the viewport
-      className="relative w-full"
-      style={{ height: pageHeight }}
-      onClick={() => setSelectedId(null)}
-    >
-      {mode === 'edit' ? (
-        flattenComponents(components).map(comp => (
-          <RenderComponent
-            key={comp.id}
-            comp={comp}
-            mode="edit"
-            selectedId={selectedId}
-            setSelectedId={setSelectedId}
-            updateComponent={handleUpdate}
-            canvasRef={canvasRef}        // <— now points to full-height content
-          />
-        ))
-      ) : (
-        <RenderPreview components={components} navigate={setCurrentPageId} />
-      )}
-    </div>
+  ref={canvasRef}
+  className="relative w-full"
+  onMouseDown={(e) => {
+    // Clear only when the empty canvas is clicked, not children
+    if (e.target === e.currentTarget) setSelectedId(null)
+  }}
+>
+  <Canvas
+    mode={mode}
+    components={components}
+    navigate={setCurrentPageId}
+    selectedId={selectedId}
+    setSelectedId={setSelectedId}
+    updateComponent={handleUpdate}
+  />
+</div>
+
 
             {/* Prompt Box */}
             <form
