@@ -1,8 +1,8 @@
-export type SizeVal = number | '100%' | 'fit-content'
+export type SizeVal = number | '100%' | 'fit-content' | 'auto'
 
 export interface UIComponent {
   id: string
-  type: 'Text' | 'Input' | 'Button' | 'Container' | 'Card' | 'Tabs' | 'Tab' | 'Form'
+  type: 'Text' | 'Input' | 'Button' | 'Container' | 'Card' | 'Tabs' | 'Tab' | 'Form' | 'Icon' | 'TextRotator' | "Image" 
   props: Record<string, any>
 
   // 👇 make layout fields optional so mocks can omit them
@@ -34,3 +34,4 @@ export interface Page {
   name: string
   components: UIComponent[]
 }
+

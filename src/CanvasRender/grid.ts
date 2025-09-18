@@ -1,19 +1,19 @@
-// CanvasRender/grid.ts
-
-export const CANVAS_W   = 980;
-export const CONTAINER_W= 920;
+// src/CanvasRender/grid.ts
+export const CANVAS_W = 1200;
+// was 1120 → makes 40px side gutters; 1184 leaves ~8px on each side
+export const CONTAINER_W = 1184;
 
 /** Content grid (semantic spans) */
 export const MAIN_COLS  = 12;
 export const MAIN_GUTTER= 16;
 
 /** Nudge grid (fine drag alignment) */
-export const SUBDIV     = 2;      // 2 → 24 subcols, 3 → 36 subcols
-export const NUDGE_COLS = MAIN_COLS * SUBDIV;
+export const SUBDIV       = 2;      // 2 → 24 subcols, 3 → 36 subcols
+export const NUDGE_COLS   = MAIN_COLS * SUBDIV;
 export const NUDGE_GUTTER = 12;
 
 /** Derived */
-export const LEFT_INSET = Math.round((CANVAS_W - CONTAINER_W) / 2);
+export const LEFT_INSET  = Math.round((CANVAS_W - CONTAINER_W) / 2);
 
 // Content grid math (use for widths/spans)
 export const MAIN_COL   = (CONTAINER_W - (MAIN_COLS - 1) * MAIN_GUTTER) / MAIN_COLS;
@@ -84,6 +84,24 @@ export function maybeSnapXWithEdges(x: number, width: number, radius = 8): numbe
   const canvasRightLeft = CANVAS_W - width;
 
   const candidates = [colLeft, containerLeft, containerRightLeft, canvasLeft, canvasRightLeft];
+
+  let best = x, bestDist = radius + 1;
+  for (const c of candidates) {
+    const d = Math.abs(c - x);
+    if (d < bestDist) { bestDist = d; best = c; }
+  }
+  return bestDist <= radius ? best : x;
+}
+
+export function maybeSnapXCanvasOnly(x: number, width: number, radius = 8): number {
+  const n = Math.round((x - LEFT_INSET) / NUDGE_STEP);
+  const colLeft = LEFT_INSET + n * NUDGE_STEP;
+
+  // canvas edges only
+  const canvasLeft = 0;
+  const canvasRightLeft = CANVAS_W - width;
+
+  const candidates = [colLeft, canvasLeft, canvasRightLeft];
 
   let best = x, bestDist = radius + 1;
   for (const c of candidates) {

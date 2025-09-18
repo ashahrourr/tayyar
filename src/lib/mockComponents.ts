@@ -1,242 +1,177 @@
 // src/lib/mockComponents.ts
-import type { UIComponent, Page } from './types'
+import type { Page } from './types'
 
 export const mockPages: Page[] = [
-    {
-      "id": "homepage",
-      "name": "MarketPlace Home",
-      "components": [
-        {
-          "id": "page-bg",
-          "type": "Container",
-          "x": 0,
-          "y": 0,
-          "w": "100%",
-          "h": "100%",
-          "props": { "variant": "Page" }
-        },        
-        {
-          "id": "header",
-          "type": "Container",
-          "x": 0, "y": 0, "w": 980, "h": 72,
-          "props": { "variant": "Header.glass", "sectionTemplate": "header" },
-          "children": [
-            {
-              "id": "logo", "type": "Text", "parentId": "header",
-              "x": 0, "y": 0, "w": 160, "h": 32,
-              "props": { "role": "logo", "mix": ["h3","brand"], "children": "Cluely" }
-            },
-        
-            {
-              "id": "nav-pricing", "type": "Button", "parentId": "header",
-              "x": 0, "y": 0, "w": 80, "h": 40,
-              "props": { "role": "navItem", "children": "Pricing", "navigateTo": "pricing" }
-            },
-            {
-              "id": "nav-enterprise", "type": "Button", "parentId": "header",
-              "x": 0, "y": 0, "w": 110, "h": 40,
-              "props": { "role": "navItem", "children": "Enterprise", "navigateTo": "enterprise" }
-            },
-            {
-              "id": "nav-careers", "type": "Button", "parentId": "header",
-              "x": 0, "y": 0, "w": 90, "h": 40,
-              "props": { "role": "navItem", "children": "Careers", "navigateTo": "careers" }
-            },
-            {
-              "id": "nav-help", "type": "Button", "parentId": "header",
-              "x": 0, "y": 0, "w": 120, "h": 40,
-              "props": { "role": "navItem", "children": "Help Center", "navigateTo": "help" }
-            },
-        
-            {
-              "id": "cta", "type": "Button", "parentId": "header",
-              "x": 0, "y": 0, "w": 180, "h": 40,
-              "props": { "role": "cta", "variant": "Button.primary", "children": "Get Started for Free" }
-            }
-          ]
-        },        
-        
-        
-        {
-          "id": "hero-main",
-          "type": "Container",
-          "x": 0, "y": 88, "w": 980, "h": 480,
-          "props": { "variant": "Section", "mix": ["brandBg","softGlow"], "sectionTemplate": "hero", "align": "center" },
-          "children": [
-            {
-              "id": "hero-title",
-              "type": "Text",
-              "parentId": "hero-main",
-              "props": { "role": "title", "mix": ["h1","text"], "children": "It's like Googling\nMid-Sentence" }
-            },
-            {
-              "id": "hero-body",
-              "type": "Text",
-              "parentId": "hero-main",
-              "props": {
-                "role": "body",
-                "mix": ["body","muted"],
-                "children": "Cluely gives you the answers you didn’t study for in every conversation, without you even having to ask."
-              }
-            },
-            {
-              "id": "hero-cta",
-              "type": "Button",
-              "parentId": "hero-main",
-              "props": { "role": "buttonPrimary", "variant": "Button.primary", "children": " Get for Mac" }
-            },
-            {
-              "id": "hero-callout",
-              "type": "Container",
-              "parentId": "hero-main",
-              "props": {
-                "role": "callout",
-                "className": "rounded-2xl bg-white/70 backdrop-blur shadow-[0_12px_32px_rgba(0,0,0,0.12)]"
-              },
-              "children": [
-                {
-                  "id": "callout-title",
-                  "type": "Text",
-                  "parentId": "hero-callout",
-                  "props": { "role": "calloutTitle", "mix": ["eyebrow"], "children": "✦ Question: \"Why would I even use Cluely?\"" }
-                },
-                {
-                  "id": "callout-body",
-                  "type": "Text",
-                  "parentId": "hero-callout",
-                  "props": {
-                    "role": "calloutBody",
-                    "mix": ["body"],
-                    "children": "Cluely is a real-time AI that gives you the power to search anything during meetings…"
-                  }
-                }
-              ]
-            }
-          ]
-          },
-        
-        
-        {
-          "id": "feature-1",
-          "type": "Container",
-          "x": 0, "y": 456, "w": 980, "h": 360,
-          "props": { "variant": "Section.alt", "sectionTemplate": "featureRow" },
-          "isSection": true, 
-          "children": [
-            { "id": "feat-eyebrow", "type": "Text", "parentId": "feature-1",
-              "props": { "role": "eyebrow", "mix": ["eyebrow"], "children": "UNDETECTABLE IN MEETINGS" } },
-            { "id": "feat-title", "type": "Text", "parentId": "feature-1",
-              "props": { "role": "title", "mix": ["h2","text"], "children": "Feeds you answers without joining your calls" } },
-            { "id": "feat-body", "type": "Text", "parentId": "feature-1",
-              "props": { "role": "body", "mix": ["body","muted"], "children": "Cluely never appears in your meeting guest list and stays invisible on screen shares." } },
-            { "id": "feat-bullets", "type": "Text", "parentId": "feature-1",
-              "props": { "role": "bulletList", "mix": ["body"], "children": "• Doesn’t join meetings\n• Invisible to screen share\n• No bots on the guest list" } },
-            { "id": "feat-cta", "type": "Button", "parentId": "feature-1",
-              "props": { "role": "buttonPrimary", "variant": "Button.primary", "children": "Get Started" } },
-            { "id": "feat-image", "type": "Container", "parentId": "feature-1",
-              "props": { "role": "image", "className": "rounded-2xl bg-white/70 backdrop-blur shadow-[0_12px_32px_rgba(0,0,0,0.12)]" } }
-          ]
-        },
-        {
-          "id": "cards-3",
-          "type": "Container",
-          "x": 0,
-          "y": 840,
-          "w": 980,
-          "h": 320,
-          "props": { "variant": "Section", "sectionTemplate": "cards-3up" },
-          "isSection": true,
-          "children": [
-            {
-              "id": "cards3-title",
-              "type": "Text",
-              "parentId": "cards-3",
-              "props": {
-                "role": "title",
-                "mix": ["h2", "text"],
-                "children": "Why Teams Choose Cluely"
-              }
-            },
-        
-            {
-              "id": "card-1",
-              "type": "Container",
-              "parentId": "cards-3",
-              "props": { "role": "card", "mix": ["surface", "rounded-lg", "shadow-md"] },
-              "children": [
-                {
-                  "id": "card-1-head",
-                  "type": "Text",
-                  "parentId": "card-1",
-                  "props": { "role": "cardTitle", "mix": ["h4"], "children": "Fast Setup" }
-                },
-                {
-                  "id": "card-1-body",
-                  "type": "Text",
-                  "parentId": "card-1",
-                  "props": {
-                    "role": "cardBody",
-                    "mix": ["body", "muted"],
-                    "children": "Get running in minutes without complex integrations."
-                  }
-                }
-              ]
-            },
-        
-            {
-              "id": "card-2",
-              "type": "Container",
-              "parentId": "cards-3",
-              "props": { "role": "card", "mix": ["surface", "rounded-lg", "shadow-md"] },
-              "children": [
-                {
-                  "id": "card-2-head",
-                  "type": "Text",
-                  "parentId": "card-2",
-                  "props": { "role": "cardTitle", "mix": ["h4"], "children": "Invisible" }
-                },
-                {
-                  "id": "card-2-body",
-                  "type": "Text",
-                  "parentId": "card-2",
-                  "props": {
-                    "role": "cardBody",
-                    "mix": ["body", "muted"],
-                    "children": "Stays hidden in calls while delivering real-time answers."
-                  }
-                }
-              ]
-            },
-        
-            {
-              "id": "card-3",
-              "type": "Container",
-              "parentId": "cards-3",
-              "props": { "role": "card", "mix": ["surface", "rounded-lg", "shadow-md"] },
-              "children": [
-                {
-                  "id": "card-3-head",
-                  "type": "Text",
-                  "parentId": "card-3",
-                  "props": { "role": "cardTitle", "mix": ["h4"], "children": "Secure" }
-                },
-                {
-                  "id": "card-3-body",
-                  "type": "Text",
-                  "parentId": "card-3",
-                  "props": {
-                    "role": "cardBody",
-                    "mix": ["body", "muted"],
-                    "children": "Enterprise-grade security built into every workflow."
-                  }
-                }
-              ]
-            }
-          ]
-        }
-                
-        
+  {
+    id: 'mini-market-home',
+    name: 'Mini Market Homepage',
+    components: [
+      // BACKGROUND
+      {
+        id: 'page-bg',
+        type: 'Container',
+        x: 0, y: 0, w: '100%', h: '100%',
+        props: { style: { background: '#F9FAFB' } },
+      },
 
-      ]  
-    }
-  ]      
+      // HERO SECTION
+      {
+        id: 'hero-bg',
+        type: 'Container',
+        x: 0, y: 0, w: '100%', h: 400,
+        props: {
+          style: {
+            background: 'linear-gradient(135deg, #22C55E 0%, #16A34A 100%)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+          },
+        },
+      },
+      {
+        id: 'hero-headline',
+        type: 'Text',
+        x: 0, y: 100, w: '100%', h: 'fit-content',
+        props: {
+          children: 'Fresh Groceries at Your Doorstep',
+          style: {
+            fontSize: 48,
+            fontWeight: 800,
+            color: '#FFFFFF',
+            textAlign: 'center',
+          },
+        },
+      },
+      {
+        id: 'hero-sub',
+        type: 'Text',
+        x: 0, y: 160, w: '100%', h: 'fit-content',
+        props: {
+          children: 'Shop local produce, snacks, and essentials online',
+          style: {
+            fontSize: 20,
+            fontWeight: 500,
+            color: '#E5E7EB',
+            textAlign: 'center',
+          },
+        },
+      },
+      {
+        id: 'hero-cta',
+        type: 'Button',
+        x: 420, y: 240, w: 200, h: 56,
+        props: {
+          children: 'Start Shopping',
+          style: {
+            background: '#FFFFFF',
+            color: '#16A34A',
+            fontSize: 18,
+            fontWeight: 700,
+            borderRadius: 12,
+            border: 'none',
+            boxShadow: '0 8px 20px rgba(0,0,0,0.15)',
+          },
+        },
+      },
+
+      // FEATURED PRODUCTS GRID (3 cols)
+      {
+        id: 'products-heading',
+        type: 'Text',
+        x: 0, y: 440, w: '100%', h: 'fit-content',
+        props: {
+          children: 'Featured Products',
+          style: {
+            fontSize: 28,
+            fontWeight: 700,
+            color: '#111827',
+            textAlign: 'center',
+            marginBottom: 20,
+          },
+        },
+      },
+
+      // Product 1
+      {
+        id: 'prod-1',
+        type: 'Card',
+        x: 120, y: 500, w: 240, h: 300,
+        props: {
+          children: 'Apples\n$2.99 / lb',
+          style: {
+            background: '#FFFFFF',
+            borderRadius: 12,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+            padding: 16,
+            fontWeight: 600,
+            textAlign: 'center',
+          },
+        },
+      },
+      // Product 2
+      {
+        id: 'prod-2',
+        type: 'Card',
+        x: 370, y: 500, w: 240, h: 300,
+        props: {
+          children: 'Fresh Bread\n$1.99 each',
+          style: {
+            background: '#FFFFFF',
+            borderRadius: 12,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+            padding: 16,
+            fontWeight: 600,
+            textAlign: 'center',
+          },
+        },
+      },
+      // Product 3
+      {
+        id: 'prod-3',
+        type: 'Card',
+        x: 620, y: 500, w: 240, h: 300,
+        props: {
+          children: 'Organic Milk\n$3.49 / gallon',
+          style: {
+            background: '#FFFFFF',
+            borderRadius: 12,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+            padding: 16,
+            fontWeight: 600,
+            textAlign: 'center',
+          },
+        },
+      },
+
+      // FOOTER
+      {
+        id: 'footer',
+        type: 'Container',
+        x: 0, y: 840, w: '100%', h: 100,
+        props: {
+          style: {
+            background: '#111827',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          },
+        },
+      },
+      {
+        id: 'footer-text',
+        type: 'Text',
+        x: 0, y: 872, w: '100%', h: 'fit-content',
+        props: {
+          children: '© 2025 Mini Market — All rights reserved',
+          style: {
+            color: '#9CA3AF',
+            fontSize: 14,
+            textAlign: 'center',
+          },
+        },
+      },
+    ],
+  },
+]

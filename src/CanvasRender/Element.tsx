@@ -1,10 +1,14 @@
-// CanvasRender/Element.tsx
+// src/CanvasRender/Element.tsx
 import React, { JSX, RefObject } from 'react'
 import { Rnd } from 'react-rnd'
 import { UIComponent } from '@/lib/types'
 import { interpolate } from '@/utils/interpolate'
-import { resolveClassNames } from '@/design/tokens'
 import { maybeSnapXWithEdges, maybeSnapY, maybeSnapWidth } from './grid'
+import * as Lucide from 'lucide-react'
+import { normalizeHeaderSpec, isHeaderSpec } from '@/design/sections/header/spec'
+import { layoutHeaderSmart } from '@/design/sections/header/layoutHeaderSmart'
+import { HeroCarousel } from '../design/sections/hero/HeroCarousel'
+import { TextRotator } from '@/design/sections/hero/TextRotator'
 
 type Mode = 'edit' | 'preview'
 
@@ -60,15 +64,19 @@ function extractOnClick(p: any) {
 }
 
 const isInlineType = (t: UIComponent['type']) =>
-  t === 'Button' || t === 'Input' || t === 'Text'
+  t === 'Button' || t === 'Input' || t === 'Text' || t === 'Icon'
 
 const CONTROL_H = 40;
 const minHFor = (t: UIComponent['type']) =>
-  t === 'Button' || t === 'Input' ? CONTROL_H : t === 'Text' ? 24 : 24;
-
+    t === 'Button' || t === 'Input' ? CONTROL_H
+  : t === 'Text' || t === 'Icon' ? 24
+  : 24;
 const defaultWFor = (t: UIComponent['type']) =>
-  t === 'Button' ? 140 : t === 'Input' ? 260 : t === 'Text' ? 200 : 240
-
+    t === 'Button' ? 140
+  : t === 'Input' ? 260
+  : t === 'Text' ? 200
+  : t === 'Icon' ? 24
+  : 240
 function estimateInlineWidth(comp: UIComponent): number {
   const raw = (comp.props as any)?.children ?? ''
   const text = typeof raw === 'string' ? raw.replace(/<[^>]+>/g, '') : ''
@@ -135,6 +143,43 @@ function collectSubtree(root: UIComponent, kids: Map<string, UIComponent[]>) {
   return out
 }
 
+/* ---- simple className passthrough (no tokens) ---- */
+function getClassName(p?: any): string {
+  const cls = p?.className
+  if (!cls) return ''
+  return Array.isArray(cls) ? cls.filter(Boolean).join(' ') : String(cls)
+}
+
+
+// [ADD] Generic icon renderer (safe fallback if name is wrong)
+type IconProps = {
+  pack?: 'lucide'
+  name: string            // e.g. 'Bell', 'User', 'ShoppingCart'
+  size?: number           // default 18
+  strokeWidth?: number    // default 1.75
+  color?: string
+  style?: React.CSSProperties
+}
+
+function IconNode({
+  pack = 'lucide',
+  name,
+  size = 18,
+  strokeWidth = 1.75,
+  color,
+  style,
+}: IconProps) {
+  // Find the component on the Lucide namespace
+  const Comp = (Lucide as any)[name] as React.ComponentType<any> | undefined
+  const Safe = Comp || (Lucide as any).HelpCircle
+
+  return (
+    <span style={{ display: 'inline-flex', lineHeight: 0, ...style }}>
+      <Safe size={size} strokeWidth={strokeWidth} color={color} />
+    </span>
+  )
+}
+
 /* ============================== Component ============================== */
 export function Element({
   mode,
@@ -176,6 +221,40 @@ export function Element({
   // Measuring ref for auto-height (used in both preview & edit)
   const innerRef = React.useRef<HTMLElement | null>(null)
   const [measuredH, setMeasuredH] = React.useState<number | null>(null)
+  // keep this ref on the inner rendered element (you already have innerRef)
+  const [selRadius, setSelRadius] = React.useState('0px');
+  const [outset, setOutset] = React.useState(0); // px to grow the overlay
+  const CLICK_SLOP = 3; // px: treat below this as a click, not a drag
+
+  React.useLayoutEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    const cs = getComputedStyle(el);
+
+    setSelRadius(cs.borderRadius);
+
+    const bw = Math.max(
+      parseFloat(cs.borderTopWidth || '0'),
+      parseFloat(cs.borderRightWidth || '0'),
+      parseFloat(cs.borderBottomWidth || '0'),
+      parseFloat(cs.borderLeftWidth || '0')
+    );
+
+    let ring = 0;
+    const raw = cs.boxShadow || '';
+    for (const layer of raw.split(',')) {
+      const s = layer.trim();
+      if (!s || /inset/i.test(s)) continue;
+      const nums = s.match(/-?\d+\.?\d*px/g) || [];
+      if (nums.length >= 4) {
+        const blur = parseFloat(nums[2]);
+        const spread = parseFloat(nums[3]);
+        if (blur === 0 && spread > 0) ring = Math.max(ring, spread);
+      }
+    }
+
+    setOutset(Math.ceil(bw + ring));
+  }, [comp.id]);
 
   React.useLayoutEffect(() => {
     const el = innerRef.current
@@ -187,12 +266,13 @@ export function Element({
   const { byId, kids } = React.useMemo(() => buildMaps(allComponents), [allComponents])
   const mySection = React.useMemo(() => findSectionRoot(comp, byId), [comp, byId])
   const mySectionId = mySection?.id
+  const isSectionRoot = !!(mySectionId && comp.id === mySectionId)
+  const role = ((comp.props as any) || {}).role
 
   const { dx: liveDx, dy: liveDy, sourceId: liveSourceId, active: liveActive } =
     useLiveSectionOffset(mySectionId)
 
   // ⛔️ DO NOT return before hooks are declared; declare all hooks first:
-  // Hooks used in edit mode must still be created unconditionally.
   const [dragging, setDragging] = React.useState(false)
   const [blockDrag, setBlockDrag] = React.useState(false)
   const dragStartRef = React.useRef<{ left: number; top: number }>({ left: rect.left, top: rect.top })
@@ -203,36 +283,31 @@ export function Element({
 
   const zBoost = liveActive ? 10000 : 0
 
-  // Shared flag for auto-height behavior
   const wantsAuto =
     comp.h === 'fit-content' || ((comp.props as any)?.autoHeight === true)
 
-  // EDIT mode: sync measured height back to the model so the Rnd box grows
-// EDIT mode: sync measured height back to the model so the Rnd box grows
-React.useEffect(() => {
-  if (mode !== 'edit') return;
-  if (measuredH == null) return;
+  // auto-height sync
+  React.useEffect(() => {
+    if (mode !== 'edit') return;
+    if (measuredH == null) return;
 
-  // Allow auto-sizing if author opted in (fit-content/autoHeight)
-  // OR if this is a Text node that's visibly taller than its current frame.
-  const optedIn = (comp.h === 'fit-content') || ((comp.props as any)?.autoHeight === true);
-  const isText = comp.type === 'Text';
-  const frameH = rect.height;                 // current Rnd frame height
-  const overflows = measuredH > frameH + 1;   // small epsilon to avoid jitter
-  const shouldAuto = optedIn || (isText && overflows);
+    const optedIn = (comp.h === 'fit-content') || ((comp.props as any)?.autoHeight === true);
+    const isText = comp.type === 'Text';
+    const frameH = rect.height;
+    const overflows = measuredH > frameH + 1;
+    const shouldAuto = optedIn || (isText && overflows);
 
-  if (!shouldAuto) return;
+    if (!shouldAuto) return;
 
-  const target = Math.max(measuredH, minHFor(comp.type));
-  const newH = maybeSnapY(target);
+    const target = Math.max(measuredH, minHFor(comp.type));
+    const newH = maybeSnapY(target);
 
-  if (typeof comp.h !== 'number' || comp.h !== newH) {
-    updateComponent?.(comp.id, { h: newH });
-  }
-}, [mode, measuredH, comp.id, comp.h, rect.height, updateComponent]);
+    if (typeof comp.h !== 'number' || comp.h !== newH) {
+      updateComponent?.(comp.id, { h: newH });
+    }
+  }, [mode, measuredH, comp.id, comp.h, rect.height, updateComponent]);
 
-
-  // Step 3: ensure parents contain children (edit mode)
+  // ensure parents contain children (edit mode)
   React.useEffect(() => {
     if (mode !== 'edit') return
     if (measuredH == null) return
@@ -245,6 +320,9 @@ React.useEffect(() => {
       if (!pid) return
       const p = byId.get(pid)
       if (!p) return
+
+      // skip section roots
+      if ((p as any).isSection) return;
 
       const pY = num(p.y)
       const curH = num(p.h)
@@ -261,7 +339,6 @@ React.useEffect(() => {
       if (needH > curH) {
         updateComponent?.(p.id, { h: needH })
       }
-      
 
       if (p.parentId) ensureParentContainsChildren(p.parentId)
     }
@@ -269,143 +346,221 @@ React.useEffect(() => {
     ensureParentContainsChildren(comp.parentId)
   }, [mode, measuredH, comp.parentId, byId, kids, updateComponent])
 
-  /* ===== PREVIEW ===== */
-  if (mode === 'preview') {
-    const {
-      navigateTo,
-      __loopCtx: _ignore,
-      children,
-      dangerouslySetInnerHTML: _danger,
-      bindValue,
-      ...safeProps
-    } = (comp.props as any) ?? {}
 
-    const interpolatedChildren =
-      typeof children === 'string' ? interpolate(children, ctx) : children
+/* ===== PREVIEW ===== */
+if (mode === 'preview') {
+  const {
+    navigateTo,
+    __loopCtx: _ignore,
+    children,
+    dangerouslySetInnerHTML: _danger,
+    bindValue,
+    ...safeProps
+  } = (comp.props as any) ?? {}
 
-    const { variant, mix, className: rawClassName, ...restProps } = (safeProps as any) || {}
-    const className = resolveClassNames({ variant, mix, className: rawClassName })
+  const interpolatedChildren =
+    typeof children === 'string' ? interpolate(children, ctx) : children
 
-    const outerHeight = wantsAuto && measuredH ? measuredH : rect.height
+  const className = getClassName(safeProps)
+  const { className: _cn, variant: _v, mix: _m, ...restProps } = (safeProps as any) || {}
 
-    const outerBoxStyle: React.CSSProperties = {
-      position: 'absolute',
-      left: rect.left + (mySectionId && liveSourceId !== comp.id ? liveDx : 0),
-      top:  rect.top  + (mySectionId && liveSourceId !== comp.id ? liveDy : 0),
-      width: rect.width,
-      height: outerHeight,
-      zIndex: zIndex + zBoost,
-    }
+  const outerHeight = wantsAuto && measuredH ? measuredH : rect.height
 
-    const innerStyle: React.CSSProperties = {
-      width: '100%',
-      height: '100%',
-      boxSizing: 'border-box',
-      whiteSpace: comp.type === 'Button' || comp.type === 'Input' ? 'nowrap' : 'normal',
-      wordBreak: comp.type === 'Text' ? 'break-word' : 'normal',
-      ...(safeProps?.style || {}),
-      cursor: comp.type === 'Button' ? 'pointer' : (safeProps?.style?.cursor as any),
-    };
-    
+  // HERO ROTATION (minimal + parent guard)
+  const parentRole = comp.parentId
+    ? (byId.get(comp.parentId)?.props as any)?.role
+    : undefined
 
-    const actions = extractOnClick(comp.props)
-    const handleClick =
-      comp.type === 'Button'
-        ? () => {
-            if (setState) {
-              const { append, increment, set, toggle } = actions
-              if (append) {
-                const { key, value } = append
-                setState(s => ({ ...s, [key]: [...(s[key] ?? []), value] }))
-              }
-              if (increment) {
-                const k = increment
-                setState(s => ({ ...s, [k]: (s[k] ?? 0) + 1 }))
-              }
-              if (set) {
-                const { key, value } = set
-                setState(s => ({ ...s, [key]: value }))
-              }
-              if (toggle) {
-                const k = toggle
-                setState(s => ({ ...s, [k]: !s[k] }))
-              }
-            }
-            if (navigateTo) onNavigate?.(navigateTo)
-          }
-        : undefined
+  // Skip the slide container itself AND any nodes under a slide.
+  if (role === 'hero-slide' || parentRole === 'hero-slide') return null
 
-    const hasHTML =
-      typeof interpolatedChildren === 'string' &&
-      /<\/?[a-z][\s\S]*>/i.test(interpolatedChildren)
-
-    const Tag = comp.type === 'Form' ? 'form' : 'div'
-
+  if (role === 'hero-carousel') {
     return (
-      <div style={outerBoxStyle}>
-        {comp.type === 'Input' && (safeProps as any)?.bindValue && setState ? (
-          <input
-            ref={innerRef as any}
-            {...restProps}
-            className={className}
-            style={innerStyle}
-            value={(state?.[(safeProps as any).bindValue] ?? '') as any}
-            onChange={(e) =>
-              setState(s => ({ ...s, [(safeProps as any).bindValue]: e.currentTarget.value }))
-            }
-          />
-        ) : comp.type === 'Text' ? (
-          <div
-            ref={innerRef as any}
-            className={className}
-            style={innerStyle}
-            onClick={handleClick}
-          >
-            {interpolatedChildren}
-          </div>
-        ) : comp.type === 'Button' ? (
-          <button
-            ref={innerRef as any}
-            className={className}
-            style={innerStyle}
-            onClick={handleClick}
-          >
-            {interpolatedChildren}
-          </button>
-        ) : hasHTML ? (
-          <Tag
-            ref={innerRef as any}
-            {...restProps}
-            className={className}
-            style={innerStyle}
-            onClick={handleClick}
-            dangerouslySetInnerHTML={{ __html: interpolatedChildren as string }}
-          />
-        ) : (
-          <Tag
-            ref={innerRef as any}
-            {...restProps}
-            className={className}
-            style={innerStyle}
-            onClick={handleClick}
-          >
-            {interpolatedChildren}
-          </Tag>
-        )}
-      </div>
+      <HeroCarousel
+        node={comp}
+        canvasRef={canvasRef}
+        state={state}
+        setState={setState}
+        scale={scale}
+        zIndex={zIndex}
+      />
     )
   }
 
+  if (comp.type === 'TextRotator') {
+    return (
+      <TextRotator
+        node={comp}
+        canvasRef={canvasRef}
+        zIndex={zIndex}
+      />
+    )
+  }
+
+  const outerBoxStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: rect.left + (mySectionId && liveSourceId !== comp.id ? liveDx : 0),
+    top: rect.top + (mySectionId && liveSourceId !== comp.id ? liveDy : 0),
+    width: rect.width,
+    height: outerHeight,
+    zIndex: zIndex + zBoost,
+  }
+
+  const innerStyle: React.CSSProperties = {
+    width: '100%',
+    height: '100%',
+    boxSizing: 'border-box',
+    whiteSpace: comp.type === 'Button' || comp.type === 'Input' ? 'nowrap' : 'normal',
+    wordBreak: comp.type === 'Text' ? 'break-word' : 'normal',
+    ...(safeProps?.style || {}),
+    cursor: comp.type === 'Button' ? 'pointer' : (safeProps?.style?.cursor as any),
+  }
+
+  const actions = extractOnClick(comp.props)
+  const handleClick =
+    comp.type === 'Button'
+      ? () => {
+          if (setState) {
+            const { append, increment, set, toggle } = actions
+            if (append) {
+              const { key, value } = append
+              setState(s => ({ ...s, [key]: [...(s[key] ?? []), value] }))
+            }
+            if (increment) {
+              const k = increment
+              setState(s => ({ ...s, [k]: (s[k] ?? 0) + 1 }))
+            }
+            if (set) {
+              const { key, value } = set
+              setState(s => ({ ...s, [key]: value }))
+            }
+            if (toggle) {
+              const k = toggle
+              setState(s => ({ ...s, [k]: !s[k] }))
+            }
+          }
+          if (navigateTo) onNavigate?.(navigateTo)
+        }
+      : undefined
+
+  const hasHTML =
+    typeof interpolatedChildren === 'string' &&
+    /<\/?[a-z][\s\S]*>/i.test(interpolatedChildren)
+
+  const Tag = comp.type === 'Form' ? 'form' : 'div'
+
+  return (
+    <div style={outerBoxStyle}>
+      {comp.type === 'Input' && (safeProps as any)?.bindValue && setState ? (
+        <input
+          ref={innerRef as any}
+          {...restProps}
+          className={className}
+          style={innerStyle}
+          value={(state?.[(safeProps as any).bindValue] ?? '') as any}
+          onChange={(e) =>
+            setState(s => ({ ...s, [(safeProps as any).bindValue]: e.currentTarget.value }))
+          }
+        />
+      ) : comp.type === 'Text' ? (
+        <div
+          ref={innerRef as any}
+          className={className}
+          style={innerStyle}
+          onClick={handleClick}
+        >
+          {interpolatedChildren}
+        </div>
+      ) : comp.type === 'Button' ? (
+        <button
+          ref={innerRef as any}
+          className={className}
+          style={innerStyle}
+          onClick={handleClick}
+        >
+          {interpolatedChildren}
+        </button>
+      ) : comp.type === 'Icon' ? (
+        <div
+          ref={innerRef as any}
+          className={className}
+          style={{ ...innerStyle, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={handleClick}
+        >
+          <IconNode
+            pack={(safeProps as any)?.pack ?? 'lucide'}
+            name={(safeProps as any)?.name ?? 'HelpCircle'}
+            size={(safeProps as any)?.size ?? 18}
+            strokeWidth={(safeProps as any)?.strokeWidth ?? 1.75}
+            color={(safeProps as any)?.color}
+            style={(safeProps as any)?.style}
+          />
+        </div>
+      ) : comp.type === 'Image' ? (
+        <img
+          ref={innerRef as any}
+          src={(safeProps as any)?.src}
+          alt={(safeProps as any)?.alt ?? ''}
+          className={className}
+          style={{
+            ...innerStyle,
+            objectFit: (safeProps as any)?.objectFit ?? 'cover',
+            display: 'block',
+          }}
+        />
+      ) : hasHTML ? (
+        <Tag
+          ref={innerRef as any}
+          {...restProps}
+          className={className}
+          style={innerStyle}
+          onClick={handleClick}
+          dangerouslySetInnerHTML={{ __html: interpolatedChildren as string }}
+        />
+      ) : (
+        <Tag
+          ref={innerRef as any}
+          {...restProps}
+          className={className}
+          style={innerStyle}
+          onClick={handleClick}
+        >
+          {interpolatedChildren}
+        </Tag>
+      )}
+    </div>
+  )
+}
+
+
   /* ===== EDIT ===== */
+if (role === 'hero-slide' && (((comp.props as any).index ?? 0) > 0)) {
+  return null // only show the first slide in edit
+}
+
   const isLocked =
-    comp.id === 'page-bg' ||
-    (comp.type === 'Container' && comp.w === '100%' && comp.h === '100%')
+  comp.id === 'page-bg' ||
+  (comp as any).isSection || // ← lock section roots created by the pipeline
+  (comp.type === 'Container' && comp.w === '100%' && comp.h === '100%')
 
   if (isLocked) {
-    const { variant, mix, className } = (comp.props as any) || {}
-    const resolved = resolveClassNames({ variant, mix, className })
-    return <div className={resolved} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
+    const p = (comp.props as any) || {}
+    const cls = getClassName(p)
+    return (
+      <div
+        className={cls}
+        style={{
+          position: 'absolute',
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+          pointerEvents: 'none',
+        }}
+      />
+    )
   }
+  
 
   return (
     <Rnd
@@ -416,35 +571,27 @@ React.useEffect(() => {
       style={{ zIndex: zIndex + zBoost }}
       onDragStart={(e) => {
         setDragging(true)
-        setBlockDrag((e as MouseEvent).shiftKey === true)
+        const wantsBlock = (e as MouseEvent).shiftKey === true || isSectionRoot
+        setBlockDrag(wantsBlock)
         dragStartRef.current = { left: rect.left, top: rect.top }
-
-        if ((e as MouseEvent).shiftKey && mySectionId) {
+        if (wantsBlock && mySectionId) {
           liveStore.set(mySectionId, comp.id, { dx: 0, dy: 0 })
         }
       }}
       onDrag={(e, d) => {
         if (!blockDrag || !mySectionId || !mySection) return
-
-        const dxRaw = d.x - dragStartRef.current.left
-        const dyRaw = d.y - dragStartRef.current.top
-
-        const oldRootX = Number(mySection.x ?? 0)
-        const oldRootY = Number(mySection.y ?? 0)
-        const rootW = typeof mySection.w === 'number' ? mySection.w : parseInt(String(mySection.w ?? 0), 10) || rect.width
-
-        const propX = oldRootX + dxRaw
-        const propY = oldRootY + dyRaw
-
-        const snapX = maybeSnapXWithEdges(propX, rootW)
-        const snapY = maybeSnapY(propY)
-
-        liveStore.set(mySectionId, comp.id, { dx: snapX - oldRootX, dy: snapY - oldRootY })
+        const dx = d.x - dragStartRef.current.left
+        const dy = d.y - dragStartRef.current.top
+        liveStore.set(mySectionId, comp.id, { dx, dy })
       }}
       onDragStop={(_, d) => {
         setDragging(false)
+        const dx = d.x - dragStartRef.current.left
+        const dy = d.y - dragStartRef.current.top
+        const moved = Math.abs(dx) >= CLICK_SLOP || Math.abs(dy) >= CLICK_SLOP
 
         if (!blockDrag) {
+          if (!moved) return
           const x = maybeSnapXWithEdges(d.x, rect.width)
           const y = maybeSnapY(d.y)
           updateComponent(comp.id, { x, y })
@@ -452,6 +599,7 @@ React.useEffect(() => {
         }
 
         if (!mySectionId || !mySection) {
+          if (!moved) { liveStore.clear(); return }
           const x = maybeSnapXWithEdges(d.x, rect.width)
           const y = maybeSnapY(d.y)
           updateComponent(comp.id, { x, y })
@@ -459,32 +607,17 @@ React.useEffect(() => {
           return
         }
 
-        const dxRaw = d.x - dragStartRef.current.left
-        const dyRaw = d.y - dragStartRef.current.top
+        if (!moved) { liveStore.clear(); return }
 
-        const oldRootX = Number(mySection.x ?? 0)
-        const oldRootY = Number(mySection.y ?? 0)
-        const rootW = typeof mySection.w === 'number' ? mySection.w : parseInt(String(mySection.w ?? 0), 10) || rect.width
-
-        const propX = oldRootX + dxRaw
-        const propY = oldRootY + dyRaw
-
-        const newRootX = maybeSnapXWithEdges(propX, rootW)
-        const newRootY = maybeSnapY(propY)
-
-        const dxFinal = newRootX - oldRootX
-        const dyFinal = newRootY - oldRootY
-
+        const newRootX = Number(mySection.x ?? 0) + dx
+        const newRootY = Number(mySection.y ?? 0) + dy
         updateComponent(mySection.id, { x: newRootX, y: newRootY })
 
         const subtree = collectSubtree(mySection, kids)
         for (const node of subtree) {
           if (node.id === mySection.id) continue
-          const nx = (node.x ?? 0) + dxFinal
-          const ny = (node.y ?? 0) + dyFinal
-          updateComponent(node.id, { x: nx, y: ny })
+          updateComponent(node.id, { x: (node.x ?? 0) + dx, y: (node.y ?? 0) + dy })
         }
-
         liveStore.clear()
       }}
       onResizeStop={(_, __, ref, ___, pos) => {
@@ -511,18 +644,21 @@ React.useEffect(() => {
           zIndex: zIndex + zBoost,
         }}
       >
-        {renderInner(comp, ctx, innerRef)}
+        {renderInner(comp, ctx, innerRef, canvasRef)}
         {selectedId === comp.id && (
           <div
             aria-hidden
             style={{
               position: 'absolute',
-              inset: -1,
+              left: -outset,
+              top: -outset,
+              width: `calc(100% + ${outset * 2}px)`,
+              height: `calc(100% + ${outset * 2}px)`,
               pointerEvents: 'none',
-              borderRadius: 6,
-              outline: '2px solid #fda292',
-              outlineOffset: 0,
-              boxShadow: '0 0 0 1px rgba(0,0,0,0.25)',
+              boxSizing: 'border-box',
+              border: '2px solid #f97316',
+              borderRadius: `calc(${selRadius} + ${outset}px)`,
+              zIndex: (zIndex ?? 1) + 100000,
             }}
           />
         )}
@@ -534,7 +670,8 @@ React.useEffect(() => {
 function renderInner(
   comp: UIComponent,
   ctx: Record<string, any>,
-  ref?: React.Ref<any>
+  ref?: React.Ref<any>,
+  canvasRef?: RefObject<HTMLDivElement | null> // 👈 add this
 ) {
   const rawChildren = (comp.props as any)?.children
   const children = typeof rawChildren === 'string' ? interpolate(rawChildren, ctx) : rawChildren
@@ -543,13 +680,13 @@ function renderInner(
     children: _ch,
     dangerouslySetInnerHTML: _danger,
     className,
-    variant,
-    mix,
+    variant: _variant,
+    mix: _mix,
     style: inlineStyle,
     ...safeProps
   } = (comp.props as any) ?? {}
 
-  const classNameResolved = resolveClassNames({ variant, mix, className })
+  const classNameResolved = getClassName({ className })
   const style: React.CSSProperties = {
     width: '100%',
     height: '100%',
@@ -558,17 +695,60 @@ function renderInner(
     wordBreak: comp.type === 'Text' ? 'break-word' : 'normal',
     ...(inlineStyle || {}),
   };
-  
 
   const hasHTML = typeof children === 'string' && /<\/?[a-z][\s\S]*>/i.test(children)
-
+  if (comp.type === 'Icon') {
+    return (
+      <div
+        ref={ref as any}
+        className={classNameResolved}
+        style={{ ...style, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        <IconNode
+          pack={(safeProps as any)?.pack ?? 'lucide'}
+          name={(safeProps as any)?.name ?? 'HelpCircle'}
+          size={(safeProps as any)?.size ?? 18}
+          strokeWidth={(safeProps as any)?.strokeWidth ?? 1.75}
+          color={(safeProps as any)?.color}
+          style={(safeProps as any)?.style}
+        />
+      </div>
+    )
+  }
   if (comp.type === 'Text')
     return <div ref={ref as any} className={classNameResolved} style={style}>{children}</div>
   if (comp.type === 'Input')
     return <input ref={ref as any} {...safeProps} className={classNameResolved} style={style} />
   if (comp.type === 'Button')
     return <button ref={ref as any} {...safeProps} className={classNameResolved} style={style}>{children}</button>
-
+  if (comp.type === 'TextRotator') {
+    return (
+      <TextRotator
+        node={comp}
+        canvasRef={canvasRef} // pass through the real ref
+        zIndex={1}
+        inline
+      />
+    )
+  }
+  if (comp.type === 'Image') {
+    return (
+      <img
+        ref={ref as any}
+        src={(safeProps as any)?.src}
+        alt={(safeProps as any)?.alt ?? ''}
+        className={classNameResolved}
+        style={{
+          ...style,
+          objectFit: (safeProps as any)?.objectFit ?? 'cover',
+          display: 'block',
+        }}
+      />
+    )
+  }
+  
+  
+  
   const Tag = comp.type === 'Form' ? 'form' : 'div'
   if (hasHTML) {
     return (
