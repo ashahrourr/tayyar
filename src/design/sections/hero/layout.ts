@@ -70,7 +70,7 @@ export function layoutHeroSmart(spec: HeroSpecResolved): UIComponent[] {
 
   // Layout columns (start with ratio)
   let textW  = Math.round(innerW * textRatio)
-  let textX  = spec.variant === 'centered' ? padX + Math.round((innerW - textW) / 2) : padX
+  const textX  = spec.variant === 'centered' ? padX + Math.round((innerW - textW) / 2) : padX
   let mediaX = padX + textW + gap
   let mediaW = innerW - textW - (spec.variant === 'centered' ? 0 : gap)
 

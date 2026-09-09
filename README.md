@@ -1,40 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/pages/api-reference/create-next-app).
+# Tayyar
 
-## Getting Started
+**A visual page builder where sections lay themselves out.**
 
-First, run the development server:
+![The builder: layers tree on the left, canvas in the middle, a selected heading outlined](docs/builder.jpg)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+---
+
+## The problem
+
+Page builders make you place every box by hand. Templates hand you one look you cannot reshape.
+
+Neither of them knows what a *header* is. To the builder it's a row of rectangles, so making it work
+on mobile means moving all of them again — and again for tablet. The design decisions that actually
+matter ("this is a marketplace, search should dominate, keep it tight") live in your head, and every
+layout has to be re-derived from them by hand.
+
+## The solution
+
+Describe the section by **intent** instead:
+
+```ts
+{ styleIntent: 'marketplace', searchEmphasis: 'dominant',
+  density: 'tight', desktop: 'search-dominant', mobile: 'overlay-search' }
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+A layout module turns that into real positions on a 12-column grid — for every breakpoint. The
+output is an ordinary component tree, so you can still select anything on the canvas and drag it.
 
-You can start editing the page by modifying `pages/index.tsx`. The page auto-updates as you edit the file.
+## How it works
 
-[API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.ts`.
+**Everything is one JSON tree.** A `UIComponent` has a whitelisted `type`, a `props` bag, `x/y/w/h`,
+and `children`. Nothing else. Pages are arrays of those.
 
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) instead of React pages.
+**Layout is a pipeline of pure functions.** `runSectionPipeline` walks an ordered list of section
+modules, each one a `(roots: UIComponent[]) => UIComponent[]` transform over a fresh deep clone. A
+module can rewrite the whole tree, and because it is pure you can re-run the pipeline on every render
+— which is exactly what the canvas does.
 
-This project uses [`next/font`](https://nextjs.org/docs/pages/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**The intent vocabulary is typed.** `header/spec.ts` is 389 lines of unions — theme, density, style
+intent, search emphasis, per-breakpoint modes, action types, style packs — and `layoutHeaderSmart.ts`
+is 674 lines turning that into coordinates. The spec is the interesting part: it makes the design
+decisions explicit and reviewable instead of implicit in the pixel positions.
 
-## Learn More
+**The grid is real.** 1200px canvas, 1184px container, 12 columns with 16px gutters, plus a
+24-subcolumn nudge grid for finer alignment.
 
-To learn more about Next.js, take a look at the following resources:
+## Status
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn-pages-router) - an interactive Next.js tutorial.
+Runs on bundled mock pages — clone it, `npm run dev`, and you get the builder in the screenshot.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Working: canvas with drag/resize and grid snapping, layers tree, selection, edit/preview/full-screen,
+and the section pipeline.
 
-## Deploy on Vercel
+Designed but not wired up:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **LLM generation** — `pages/api/generate.ts` is commented out. The component schema was built to be
+  model-emittable and the full prompt contract is written out in `lib/generateCode.ts`, but nothing
+  calls it.
+- **Code export** — `lib/generateCode.ts` is that contract as comments; there is no executable code
+  in the file yet.
+- **Style editor** — `RightSideBar/StyleEditor.tsx` exists and converts style edits to Tailwind
+  classes, but it is not mounted in `pages/index.tsx`, so the right panel is currently empty.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/pages/building-your-application/deploying) for more details.
+## Run it
+
+```bash
+npm install
+npm run dev        # http://localhost:3000
+```
+
+Click the page under **Pages** to load it, then click anything on the canvas to select it.

@@ -277,9 +277,9 @@ export function Element({
   const [blockDrag, setBlockDrag] = React.useState(false)
   const dragStartRef = React.useRef<{ left: number; top: number }>({ left: rect.left, top: rect.top })
 
-  // It's safe to early-return now because hooks above are always called in every render
+  // Hooks must run on every render, so the early return for hidden nodes happens
+  // below, after the effects. The effects no-op while hidden.
   const isHidden = !!(showIfExpr && !evalBool(showIfExpr, ctx))
-  if (isHidden) return null
 
   const zBoost = liveActive ? 10000 : 0
 
@@ -288,6 +288,7 @@ export function Element({
 
   // auto-height sync
   React.useEffect(() => {
+    if (isHidden) return;
     if (mode !== 'edit') return;
     if (measuredH == null) return;
 
@@ -305,10 +306,11 @@ export function Element({
     if (typeof comp.h !== 'number' || comp.h !== newH) {
       updateComponent?.(comp.id, { h: newH });
     }
-  }, [mode, measuredH, comp.id, comp.h, rect.height, updateComponent]);
+  }, [isHidden, mode, measuredH, comp.id, comp.h, rect.height, updateComponent]);
 
   // ensure parents contain children (edit mode)
   React.useEffect(() => {
+    if (isHidden) return;
     if (mode !== 'edit') return
     if (measuredH == null) return
     if (!comp.parentId) return
@@ -344,7 +346,9 @@ export function Element({
     }
 
     ensureParentContainsChildren(comp.parentId)
-  }, [mode, measuredH, comp.parentId, byId, kids, updateComponent])
+  }, [isHidden, mode, measuredH, comp.parentId, byId, kids, updateComponent])
+
+  if (isHidden) return null
 
 
 /* ===== PREVIEW ===== */

@@ -59,7 +59,7 @@ export interface HeroSpec {
 }
 
 // Resolved with sensible defaults
-export interface HeroSpecResolved extends HeroSpec {}
+export type HeroSpecResolved = HeroSpec
 
 export function resolveHeroSpec(p: Partial<HeroSpec>): HeroSpecResolved {
   const theme   = p.theme   ?? 'light'
